@@ -46,7 +46,7 @@ router.get('/:id', async (req, res) => {
       .populate('project', 'name location')
       .populate('phase', 'name')
       .populate('assignedEmployee', 'name employeeCode mobile email')
-      .populate('customer', 'name mobile email aadhaar address');
+      .populate('customer', 'name mobile email address');
     if (!plot) return res.status(404).json({ message: 'Plot not found' });
     res.json(plot);
   } catch (error) {

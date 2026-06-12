@@ -2,6 +2,7 @@ import express from 'express';
 import Lead from '../models/Lead.js';
 import Employee from '../models/Employee.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { validateMobile } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -34,9 +35,37 @@ const sanitizeLeadBody = (body) => {
   return data;
 };
 
-router.post('/', authorize('super_admin'), async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const lead = await Lead.create(sanitizeLeadBody(req.body));
+    const { name, mobile, email, source, status, interestedProject } = req.body;
+
+    if (!name?.trim() || !mobile) {
+      return res.status(400).json({ message: 'Name and mobile are required' });
+    }
+
+    const mobileCheck = validateMobile(mobile);
+    if (!mobileCheck.valid) {
+      return res.status(400).json({ message: mobileCheck.message });
+    }
+
+    const data = sanitizeLeadBody({
+      name: name.trim(),
+      mobile: mobileCheck.value,
+      email: email?.trim() || '',
+      source: source || 'walk-in',
+      status: status || 'new',
+      interestedProject,
+    });
+
+    if (req.user.role === 'employee') {
+      const employee = await Employee.findOne({ user: req.user._id });
+      if (!employee) {
+        return res.status(400).json({ message: 'Employee profile not found' });
+      }
+      data.assignedEmployee = employee._id;
+    }
+
+    const lead = await Lead.create(data);
     const populated = await Lead.findById(lead._id)
       .populate('interestedProject', 'name')
       .populate('assignedEmployee', 'name employeeCode');
@@ -48,11 +77,31 @@ router.post('/', authorize('super_admin'), async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const lead = await Lead.findByIdAndUpdate(req.params.id, sanitizeLeadBody(req.body), { new: true });
-    if (!lead) return res.status(404).json({ message: 'Lead not found' });
+    const existing = await Lead.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Lead not found' });
+
+    if (req.user.role === 'employee') {
+      const employee = await Employee.findOne({ user: req.user._id });
+      if (existing.assignedEmployee?.toString() !== employee?._id?.toString()) {
+        return res.status(403).json({ message: 'Not authorized to update this lead' });
+      }
+    }
+
+    const updates = sanitizeLeadBody(req.body);
+    if (updates.mobile) {
+      const mobileCheck = validateMobile(updates.mobile);
+      if (!mobileCheck.valid) {
+        return res.status(400).json({ message: mobileCheck.message });
+      }
+      updates.mobile = mobileCheck.value;
+    }
+
+    const lead = await Lead.findByIdAndUpdate(req.params.id, updates, { new: true })
+      .populate('interestedProject', 'name')
+      .populate('assignedEmployee', 'name employeeCode');
     res.json(lead);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 });
 

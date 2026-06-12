@@ -5,6 +5,7 @@ import Plot from '../models/Plot.js';
 import Customer from '../models/Customer.js';
 import Lead from '../models/Lead.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { validateMobile, generateEmployeeCode } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -14,6 +15,15 @@ router.get('/', authorize('super_admin'), async (req, res) => {
   try {
     const employees = await Employee.find().sort({ createdAt: -1 });
     res.json(employees);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/next-code', authorize('super_admin'), async (req, res) => {
+  try {
+    const employeeCode = await generateEmployeeCode();
+    res.json({ employeeCode });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -44,11 +54,16 @@ router.post('/', authorize('super_admin'), async (req, res) => {
   try {
     const { name, email, password, employeeCode, mobile, address, salesTarget, joiningDate } = req.body;
 
-    if (!employeeCode || !name || !mobile || !email) {
-      return res.status(400).json({ message: 'Employee ID, name, mobile, and email are required' });
+    if (!name || !mobile || !email) {
+      return res.status(400).json({ message: 'Name, mobile, and email are required' });
     }
     if (!password) {
       return res.status(400).json({ message: 'Password is required for new employees' });
+    }
+
+    const mobileCheck = validateMobile(mobile);
+    if (!mobileCheck.valid) {
+      return res.status(400).json({ message: mobileCheck.message });
     }
 
     const existingUser = await User.findOne({ email: email.trim().toLowerCase() });
@@ -56,10 +71,12 @@ router.post('/', authorize('super_admin'), async (req, res) => {
       return res.status(400).json({ message: 'A user with this email already exists' });
     }
 
+    const code = employeeCode?.trim() || await generateEmployeeCode();
+
     const employee = await Employee.create({
-      employeeCode: employeeCode.trim(),
+      employeeCode: code,
       name: name.trim(),
-      mobile: mobile.trim(),
+      mobile: mobileCheck.value,
       email: email.trim().toLowerCase(),
       address: address?.trim() || '',
       salesTarget: Number(salesTarget) || 0,
@@ -89,9 +106,16 @@ router.post('/', authorize('super_admin'), async (req, res) => {
 
 router.put('/:id', authorize('super_admin'), async (req, res) => {
   try {
-    const { password, ...updates } = req.body;
+    const { password, employeeCode, ...updates } = req.body;
     if (updates.email) updates.email = updates.email.trim().toLowerCase();
     if (updates.salesTarget !== undefined) updates.salesTarget = Number(updates.salesTarget) || 0;
+    if (updates.mobile) {
+      const mobileCheck = validateMobile(updates.mobile);
+      if (!mobileCheck.valid) {
+        return res.status(400).json({ message: mobileCheck.message });
+      }
+      updates.mobile = mobileCheck.value;
+    }
 
     const employee = await Employee.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
