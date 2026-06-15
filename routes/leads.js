@@ -29,18 +29,32 @@ router.get('/', async (req, res) => {
 
 const sanitizeLeadBody = (body) => {
   const data = { ...body };
-  ['assignedEmployee', 'interestedProject'].forEach((key) => {
-    if (!data[key]) delete data[key];
-  });
+  if (data.name) data.name = data.name.trim();
+  if (data.email) data.email = data.email.trim();
+  if (data.notes !== undefined) data.notes = data.notes.trim();
   return data;
 };
 
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 router.post('/', async (req, res) => {
   try {
-    const { name, mobile, email, source, status, interestedProject } = req.body;
+    const { name, mobile, email, source, status, interestedProject, assignedEmployee } = req.body;
 
     if (!name?.trim() || !mobile) {
       return res.status(400).json({ message: 'Name and mobile are required' });
+    }
+
+    if (!email?.trim()) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    if (!isValidEmail(email.trim())) {
+      return res.status(400).json({ message: 'Enter a valid email address' });
+    }
+
+    if (!interestedProject) {
+      return res.status(400).json({ message: 'Interested project is required' });
     }
 
     const mobileCheck = validateMobile(mobile);
@@ -51,7 +65,7 @@ router.post('/', async (req, res) => {
     const data = sanitizeLeadBody({
       name: name.trim(),
       mobile: mobileCheck.value,
-      email: email?.trim() || '',
+      email: email.trim(),
       source: source || 'walk-in',
       status: status || 'new',
       interestedProject,
@@ -63,6 +77,10 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ message: 'Employee profile not found' });
       }
       data.assignedEmployee = employee._id;
+    } else if (!assignedEmployee) {
+      return res.status(400).json({ message: 'Assigned employee is required' });
+    } else {
+      data.assignedEmployee = assignedEmployee;
     }
 
     const lead = await Lead.create(data);
@@ -88,6 +106,13 @@ router.put('/:id', async (req, res) => {
     }
 
     const updates = sanitizeLeadBody(req.body);
+
+    const nextStatus = updates.status ?? existing.status;
+    const remark = updates.notes !== undefined ? updates.notes : existing.notes;
+    if (nextStatus === 'converted' && !remark?.trim()) {
+      return res.status(400).json({ message: 'Remark is required when status is completed (converted)' });
+    }
+
     if (updates.mobile) {
       const mobileCheck = validateMobile(updates.mobile);
       if (!mobileCheck.valid) {

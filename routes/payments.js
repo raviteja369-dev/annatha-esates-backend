@@ -1,18 +1,26 @@
 import express from 'express';
-import PDFDocument from 'pdfkit';
 import Payment from '../models/Payment.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { generatePaymentPdf } from '../utils/paymentInvoice.js';
 
 const router = express.Router();
 
 router.use(protect);
 
+const populatePayment = (query) => query
+  .populate('customer', 'name mobile email address')
+  .populate({
+    path: 'plot',
+    select: 'plotNumber plotName size facing cost project phase',
+    populate: [
+      { path: 'project', select: 'name location' },
+      { path: 'phase', select: 'name' },
+    ],
+  });
+
 router.get('/', async (req, res) => {
   try {
-    const payments = await Payment.find()
-      .populate('customer', 'name mobile email')
-      .populate('plot', 'plotNumber size cost')
-      .sort({ createdAt: -1 });
+    const payments = await populatePayment(Payment.find()).sort({ createdAt: -1 });
     res.json(payments);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -21,9 +29,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const payment = await Payment.findById(req.params.id)
-      .populate('customer')
-      .populate({ path: 'plot', populate: { path: 'project phase' } });
+    const payment = await populatePayment(Payment.findById(req.params.id));
     if (!payment) return res.status(404).json({ message: 'Payment not found' });
     res.json(payment);
   } catch (error) {
@@ -37,8 +43,15 @@ router.post('/', authorize('super_admin'), async (req, res) => {
     const payment = await Payment.create({
       ...req.body,
       remainingAmount: totalAmount - totalPaid,
+      transactions: totalPaid > 0 ? [{
+        amount: totalPaid,
+        type: 'booking',
+        receiptNumber: `RCP-${Date.now()}`,
+        notes: 'Initial payment on record creation',
+      }] : [],
     });
-    res.status(201).json(payment);
+    const populated = await populatePayment(Payment.findById(payment._id));
+    res.status(201).json(populated);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -59,7 +72,8 @@ router.post('/:id/transaction', async (req, res) => {
     payment.remainingAmount = payment.totalAmount - payment.totalPaid;
     if (payment.remainingAmount <= 0) payment.status = 'completed';
     await payment.save();
-    res.json(payment);
+    const populated = await populatePayment(Payment.findById(payment._id));
+    res.json(populated);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -67,25 +81,15 @@ router.post('/:id/transaction', async (req, res) => {
 
 router.get('/:id/pdf/:type', async (req, res) => {
   try {
-    const payment = await Payment.findById(req.params.id)
-      .populate('customer')
-      .populate('plot');
+    const payment = await populatePayment(Payment.findById(req.params.id));
     if (!payment) return res.status(404).json({ message: 'Payment not found' });
 
-    const doc = new PDFDocument();
     const type = req.params.type;
-    const titles = { receipt: 'Payment Receipt', booking: 'Booking Confirmation', agreement: 'Sale Agreement' };
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=${type}-${payment._id}.pdf`);
+
+    const doc = generatePaymentPdf(payment, type);
     doc.pipe(res);
-    doc.fontSize(20).text(titles[type] || 'Document', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(12).text(`Customer: ${payment.customer?.name}`);
-    doc.text(`Plot: ${payment.plot?.plotNumber}`);
-    doc.text(`Total Amount: ₹${payment.totalAmount.toLocaleString('en-IN')}`);
-    doc.text(`Total Paid: ₹${payment.totalPaid.toLocaleString('en-IN')}`);
-    doc.text(`Remaining: ₹${payment.remainingAmount.toLocaleString('en-IN')}`);
-    doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`);
     doc.end();
   } catch (error) {
     res.status(500).json({ message: error.message });

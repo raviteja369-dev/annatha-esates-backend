@@ -7,6 +7,7 @@ const projectSchema = new mongoose.Schema(
     location: { type: String, default: '' },
     totalArea: { type: String, default: '' },
     status: { type: String, enum: ['active', 'completed', 'upcoming'], default: 'active' },
+    publishStatus: { type: String, enum: ['draft', 'published'], default: 'published' },
     image: { type: String, default: '' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

@@ -15,6 +15,9 @@ import paymentRoutes from './routes/payments.js';
 import leadRoutes from './routes/leads.js';
 import siteVisitRoutes from './routes/siteVisits.js';
 import reportRoutes from './routes/reports.js';
+import layoutRoutes from './routes/layouts.js';
+import notificationRoutes from './routes/notifications.js';
+import searchRoutes from './routes/search.js';
 
 dotenv.config();
 
@@ -39,6 +42,9 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/site-visits', siteVisitRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/layouts', layoutRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/search', searchRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

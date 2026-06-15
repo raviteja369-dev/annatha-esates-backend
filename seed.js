@@ -4,6 +4,7 @@ import User from './models/User.js';
 import Project from './models/Project.js';
 import Phase from './models/Phase.js';
 import Plot from './models/Plot.js';
+import Layout from './models/Layout.js';
 import Employee from './models/Employee.js';
 import Customer from './models/Customer.js';
 
@@ -25,6 +26,7 @@ const seed = async () => {
     Project.deleteMany(),
     Phase.deleteMany(),
     Plot.deleteMany(),
+    Layout.deleteMany(),
     Employee.deleteMany(),
     Customer.deleteMany(),
   ]);
@@ -57,19 +59,31 @@ const seed = async () => {
   await employee.save();
 
   const projects = await Project.insertMany([
-    { name: 'Green Valley', description: 'Premium residential plots', location: 'Hyderabad', createdBy: admin._id },
-    { name: 'Royal County', description: 'Luxury gated community', location: 'Bangalore', createdBy: admin._id },
-    { name: 'Sunrise Enclave', description: 'Affordable housing plots', location: 'Chennai', createdBy: admin._id },
+    { name: 'Anantha Valley', description: 'Premium residential plots', location: 'Hyderabad', publishStatus: 'published', createdBy: admin._id },
+    { name: 'Green City', description: 'Modern urban living', location: 'Bangalore', publishStatus: 'published', createdBy: admin._id },
+    { name: 'Royal County', description: 'Luxury gated community', location: 'Bangalore', publishStatus: 'published', createdBy: admin._id },
+    { name: 'Sunrise Layout', description: 'Affordable housing plots', location: 'Chennai', publishStatus: 'published', createdBy: admin._id },
   ]);
 
+  const phaseConfigs = [
+    ['Phase 1', 'Phase 2', 'Phase 3'],
+    ['Phase 1', 'Phase 2'],
+    ['Phase 1', 'Phase 2', 'Phase 3'],
+    ['Phase 1', 'Phase 2', 'Phase 3'],
+  ];
+
   const phases = [];
-  for (const project of projects) {
-    for (const [i, name] of ['Phase A', 'Phase B', 'Phase C'].entries()) {
-      phases.push(await Phase.create({ name, project: project._id, order: i }));
+  for (let p = 0; p < projects.length; p++) {
+    for (let i = 0; i < phaseConfigs[p].length; i++) {
+      phases.push(await Phase.create({
+        name: phaseConfigs[p][i],
+        project: projects[p]._id,
+        order: i,
+        publishStatus: 'published',
+      }));
     }
   }
 
-  const statuses = ['available', 'reserved', 'sold', 'under_processing'];
   const facings = ['North', 'South', 'East', 'West'];
   const sizes = [1200, 1500, 1800, 2000, 2400];
   const costs = [2500000, 3000000, 3500000, 4000000, 4500000];
@@ -82,29 +96,67 @@ const seed = async () => {
 
   let plotIndex = 0;
   for (const project of projects) {
-    const projectPhases = phases.filter((p) => p.project.toString() === project._id.toString());
+    const projectPhases = phases.filter((ph) => ph.project.toString() === project._id.toString());
     for (const phase of projectPhases) {
-      const phaseLetter = phase.name.split(' ')[1];
+      const phaseNum = phase.name.replace(/\D/g, '') || '1';
       for (let i = 1; i <= 12; i++) {
-        const status = statuses[plotIndex % 4];
-        const customer = status === 'sold' || status === 'reserved' ? customers[plotIndex % 3]._id : null;
         await Plot.create({
-          plotNumber: `${phaseLetter}${i}`,
-          plotName: `Plot ${phaseLetter}${i}`,
+          plotNumber: `P${phaseNum}-${i}`,
+          plotName: `Plot P${phaseNum}-${i}`,
           size: sizes[i % 5],
           facing: facings[i % 4],
           cost: costs[i % 5],
-          status,
+          status: 'available',
           project: project._id,
           phase: phase._id,
           assignedEmployee: employee._id,
-          customer,
           position: { x: (i % 4) * 120, y: Math.floor((i - 1) / 4) * 100 },
           order: i,
         });
         plotIndex++;
       }
     }
+  }
+
+  // Sample layouts for first phase of each project
+  for (const project of projects) {
+    const firstPhase = phases.find((ph) => ph.project.toString() === project._id.toString());
+    if (!firstPhase) continue;
+    const phasePlots = await Plot.find({ project: project._id, phase: firstPhase._id }).limit(6);
+    await Layout.create({
+      name: `${project.name} — ${firstPhase.name}`,
+      description: `Master layout for ${firstPhase.name}`,
+      projectId: project._id,
+      phaseId: firstPhase._id,
+      version: 1,
+      publishStatus: 'published',
+      publishedAt: new Date(),
+      elements: phasePlots.map((plot, i) => ({
+        id: `plot-${plot._id}`,
+        type: 'plot',
+        layer: 'plots',
+        shape: 'rectangle',
+        x: (i % 3) * 140 + 100,
+        y: Math.floor(i / 3) * 120 + 100,
+        width: 120,
+        height: 100,
+        fillColor: '#22C55E',
+        strokeColor: '#15803D',
+        metadata: {
+          plotId: plot._id,
+          plotNumber: plot.plotNumber,
+          plotName: plot.plotName,
+          size: String(plot.size),
+          facing: plot.facing,
+          price: plot.cost,
+          status: plot.status,
+          project: project._id,
+          phase: firstPhase._id,
+        },
+        zIndex: i,
+      })),
+      updatedBy: admin._id,
+    });
   }
 
   console.log('Seed data created successfully!');

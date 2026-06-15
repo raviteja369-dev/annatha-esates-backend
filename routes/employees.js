@@ -11,6 +11,17 @@ const router = express.Router();
 
 router.use(protect);
 
+router.get('/dropdown', async (req, res) => {
+  try {
+    const employees = await Employee.find({ isActive: true })
+      .select('name employeeCode')
+      .sort({ name: 1 });
+    res.json(employees);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/', authorize('super_admin'), async (req, res) => {
   try {
     const employees = await Employee.find().sort({ createdAt: -1 });

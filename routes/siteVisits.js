@@ -86,13 +86,32 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const visit = await SiteVisit.findByIdAndUpdate(req.params.id, sanitizeVisitBody(req.body), { new: true })
+    const existing = await SiteVisit.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Site visit not found' });
+
+    if (req.user.role === 'employee') {
+      const employee = await Employee.findOne({ user: req.user._id });
+      if (!employee || String(existing.assignedEmployee) !== String(employee._id)) {
+        return res.status(403).json({ message: 'Not authorized to update this site visit' });
+      }
+    }
+
+    const updates = sanitizeVisitBody(req.body);
+    const status = updates.status ?? existing.status;
+    const remark = (updates.feedback ?? existing.feedback ?? '').trim();
+
+    if (status === 'completed' && !remark) {
+      return res.status(400).json({ message: 'Remark is required when status is completed' });
+    }
+
+    if (updates.feedback !== undefined) updates.feedback = remark;
+
+    const visit = await SiteVisit.findByIdAndUpdate(req.params.id, updates, { new: true })
       .populate('customer', 'name mobile')
       .populate('lead', 'name mobile')
       .populate('plot', 'plotNumber')
       .populate('project', 'name')
       .populate('assignedEmployee', 'name');
-    if (!visit) return res.status(404).json({ message: 'Site visit not found' });
     res.json(visit);
   } catch (error) {
     res.status(400).json({ message: error.message });

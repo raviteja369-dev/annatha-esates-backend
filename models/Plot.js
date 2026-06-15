@@ -9,7 +9,7 @@ const plotSchema = new mongoose.Schema(
     cost: { type: Number, required: true },
     status: {
       type: String,
-      enum: ['available', 'reserved', 'sold', 'under_processing'],
+      enum: ['available', 'pending', 'reserved', 'sold', 'cancelled', 'under_processing'],
       default: 'available',
     },
     project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
@@ -20,10 +20,13 @@ const plotSchema = new mongoose.Schema(
     documents: [{ name: String, url: String, uploadedAt: { type: Date, default: Date.now } }],
     position: { x: { type: Number, default: 0 }, y: { type: Number, default: 0 } },
     order: { type: Number, default: 0 },
+    active: { type: Boolean, default: false },
+    sourceLayoutId: { type: mongoose.Schema.Types.ObjectId, ref: 'Layout', default: null },
   },
   { timestamps: true }
 );
 
 plotSchema.index({ project: 1, phase: 1, plotNumber: 1 }, { unique: true });
+plotSchema.index({ active: 1, project: 1, phase: 1 });
 
 export default mongoose.model('Plot', plotSchema);

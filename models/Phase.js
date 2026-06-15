@@ -6,6 +6,7 @@ const phaseSchema = new mongoose.Schema(
     project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
     description: { type: String, default: '' },
     order: { type: Number, default: 0 },
+    publishStatus: { type: String, enum: ['draft', 'published'], default: 'published' },
   },
   { timestamps: true }
 );

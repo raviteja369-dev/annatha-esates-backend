@@ -6,6 +6,21 @@ const router = express.Router();
 
 router.use(protect);
 
+router.get('/', async (req, res) => {
+  try {
+    const { plotId, status } = req.query;
+    const query = {};
+
+    if (plotId) query.project = plotId;
+    if (status === 'published') query.publishStatus = 'published';
+
+    const phases = await Phase.find(query).sort({ order: 1 });
+    res.json(phases);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/project/:projectId', async (req, res) => {
   try {
     const phases = await Phase.find({ project: req.params.projectId }).sort({ order: 1 });
@@ -17,7 +32,17 @@ router.get('/project/:projectId', async (req, res) => {
 
 router.post('/', authorize('super_admin'), async (req, res) => {
   try {
-    const phase = await Phase.create(req.body);
+    const { name, project, description } = req.body;
+    if (!name?.trim()) return res.status(400).json({ message: 'Phase name is required' });
+    if (!project) return res.status(400).json({ message: 'Project is required' });
+
+    const order = await Phase.countDocuments({ project });
+    const phase = await Phase.create({
+      name: name.trim(),
+      project,
+      description: description || '',
+      order,
+    });
     res.status(201).json(phase);
   } catch (error) {
     res.status(500).json({ message: error.message });
