@@ -15,6 +15,7 @@ const leadSchema = new mongoose.Schema(
     assignedEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
     notes: { type: String, default: '' },
     followUpDate: { type: Date },
+    convertedCustomer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
   },
   { timestamps: true }
 );

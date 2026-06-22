@@ -1,5 +1,6 @@
 import express from 'express';
 import Lead from '../models/Lead.js';
+import Customer from '../models/Customer.js';
 import Employee from '../models/Employee.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { validateMobile } from '../utils/validators.js';
@@ -86,6 +87,43 @@ router.post('/', async (req, res) => {
     const lead = await Lead.create(data);
     const populated = await Lead.findById(lead._id)
       .populate('interestedProject', 'name')
+      .populate('assignedEmployee', 'name employeeCode');
+    res.status(201).json(populated);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/:id/convert', async (req, res) => {
+  try {
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) return res.status(404).json({ message: 'Lead not found' });
+
+    if (req.user.role === 'employee') {
+      const employee = await Employee.findOne({ user: req.user._id });
+      if (lead.assignedEmployee?.toString() !== employee?._id?.toString()) {
+        return res.status(403).json({ message: 'Not authorized to convert this lead' });
+      }
+    }
+
+    if (lead.convertedCustomer) {
+      return res.status(400).json({ message: 'This lead has already been converted to a customer' });
+    }
+
+    const customer = await Customer.create({
+      name: lead.name,
+      mobile: lead.mobile,
+      email: lead.email || '',
+      assignedEmployee: lead.assignedEmployee,
+      notes: lead.notes || '',
+    });
+
+    lead.status = 'converted';
+    lead.convertedCustomer = customer._id;
+    await lead.save();
+
+    const populated = await Customer.findById(customer._id)
+      .populate('plotPurchased', 'plotNumber size cost status')
       .populate('assignedEmployee', 'name employeeCode');
     res.status(201).json(populated);
   } catch (error) {
